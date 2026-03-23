@@ -209,3 +209,6 @@ __marimo__/
 # Jan-2026-AI
 *.txt
 Jan-2026-AI/*.*
+
+# Tracking
+PROGRESS_SUMMARY.md

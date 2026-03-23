@@ -1,41 +1,43 @@
 import sqlite3
 import random
+import uuid
 from datetime import datetime, timedelta
 import os
+
+try:
+    from faker import Faker
+except ImportError:
+    print("Please install faker: `uv pip install faker` or `pip install faker`")
+    exit(1)
 
 # ==============================================================================
 # AI Warehouse Operations Assistant - Synthetic Data Generator
 # ==============================================================================
-#
-# WHY PARAMETERS & SCALE?
-# By parameterizing the script, we can govern the exact data volume. 
-# While 30 locations is a tiny sandbox, a real small/mid-size operational 
-# warehouse has thousands of active SKUs and locations across Pick and Bulk zones.
-#
-# The defaults below represent a realistic "mid-size" operation (2,000 items,
-# combined 6,000 storage locations, and 10,000 active/historical orders).
-# This perfectly mimics real complexity while keeping the local warehouse.db 
-# file small enough (~15-25MB) to easily commit to GitHub without breaking limits.
+# Now powered by `Faker` to guarantee hyper-realistic textual data (Suppliers, 
+# Employee names, Tracking numbers) rather than sterile generated IDs. 
+# We've also adopted the legacy 'wms_data_gen' time-series logic to simulate
+# `labor_metrics` and `shipments`!
 # ==============================================================================
 
 DB_PATH = "data/warehouse.db"
+fake = Faker()
+Faker.seed(42)
+random.seed(42)
 
 def setup_database(
-    num_items=2000,           # Represents a healthy small/mid-size SKU catalog
-    num_locations_per_wh=2000,# ~6,000 total locations across the network
-    num_orders=10000,         # Plenty of historical depth for the AI to query
-    num_exceptions=500        # Enough variety to test the Synthesizer logic
+    num_items=2000,           
+    num_locations_per_wh=2000,
+    num_orders=10000,         
+    num_exceptions=500        
 ):
-    """
-    Creates the complete 7-table schema and generates interconnected synthetic 
-    operational data scaled to mimic a mid-size real-world warehouse.
-    """
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
 
-    print("Initializing Database Schema...")
+    print("Initializing Enhanced Database Schema...")
     cur.executescript("""
+        DROP TABLE IF EXISTS labor_metrics;
+        DROP TABLE IF EXISTS shipments;
         DROP TABLE IF EXISTS exceptions;
         DROP TABLE IF EXISTS order_lines;
         DROP TABLE IF EXISTS orders;
@@ -134,6 +136,31 @@ def setup_database(
             FOREIGN KEY (item_id) REFERENCES items(item_id),
             FOREIGN KEY (order_id) REFERENCES orders(order_id)
         );
+
+        -- NEW: Labor Metrics Table to simulate picking operations
+        CREATE TABLE labor_metrics (
+            metric_id INTEGER PRIMARY KEY, 
+            employee_name TEXT, 
+            task_type TEXT, 
+            warehouse_id INTEGER,
+            units_processed INTEGER, 
+            start_time TEXT, 
+            end_time TEXT,
+            error_count INTEGER,
+            FOREIGN KEY (warehouse_id) REFERENCES warehouses(warehouse_id)
+        );
+
+        -- NEW: Shipments Table linked directly to Carriers and Orders
+        CREATE TABLE shipments (
+            shipment_id INTEGER PRIMARY KEY, 
+            tracking_number TEXT UNIQUE,
+            order_id INTEGER, 
+            carrier TEXT, 
+            planned_date TEXT, 
+            actual_date TEXT, 
+            delay_flag INTEGER,
+            FOREIGN KEY (order_id) REFERENCES orders(order_id)
+        );
     """)
 
     print("Generating Warehouses, Locations, and Items...")
@@ -148,9 +175,6 @@ def setup_database(
     location_types = ['PICK', 'BULK', 'STAGE', 'PACK']
     locations = []
     loc_id = 1
-    
-    # Pre-bucketing locations by warehouse so the inventory loop is incredibly fast O(1) 
-    # instead of doing a list comprehension O(N) 3 * 2000 times.
     locations_by_wh = {1: [], 2: [], 3: []}
 
     for w in warehouses:
@@ -170,18 +194,20 @@ def setup_database(
             
     cur.executemany("INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?, ?, ?)", locations)
 
+    # Use Faker for Suppliers and Item Names
     categories = ['Apparel', 'Footwear', 'Accessories', 'Packing Supplies']
-    suppliers = ['Supplier A', 'Global Goods', 'EcoPack Logistics', 'Apex Apparel']
-    items = []
+    suppliers = [fake.company() for _ in range(20)]
     
+    items = []
     for i in range(1, num_items + 1):
         category = random.choice(categories)
         sku = f"{category[:3].upper()}-{10000 + i}"
+        item_name = f"{fake.catch_phrase().title()} {category}"
         unit_cost = round(random.uniform(5.50, 150.00), 2)
         reorder_point = random.randint(10, 150)
         safety_stock = int(reorder_point * 1.5)
         supplier = random.choice(suppliers)
-        items.append((i, sku, f"Item {sku}", category, unit_cost, reorder_point, safety_stock, supplier, 1))
+        items.append((i, sku, item_name, category, unit_cost, reorder_point, safety_stock, supplier, 1))
         
     cur.executemany("INSERT INTO items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", items)
 
@@ -193,13 +219,10 @@ def setup_database(
     for item in items:
         item_id = item[0]
         reorder_point = item[5]
-        
         for w_id in range(1, 4):
-            # Fast O(1) random choice using our pre-bucketed dictionary
             wh_locations = locations_by_wh[w_id]
             loc = random.choice(wh_locations) if wh_locations else None
             loc_id = loc[0] if loc else None
-            
             on_hand = random.randint(0, 500)
             allocated = random.randint(0, min(50, on_hand))
             available = on_hand - allocated
@@ -211,49 +234,96 @@ def setup_database(
             
     cur.executemany("INSERT INTO inventory VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", inventory)
 
-    print("Generating Orders and Order Lines...")
+    print("Generating Orders, Order Lines, Shipments, and Labor Metrics...")
     regions = ['Northeast', 'Southeast', 'Midwest', 'Southwest', 'West']
     priorities = ['Standard', 'Standard', 'Standard', 'Rush', 'VIP']
     order_statuses = ['Open', 'Released', 'Shipped', 'Shipped', 'Delayed', 'Backorder']
+    carriers = ['UPS', 'FedEx', 'USPS', 'DHL', 'LaserShip']
+    
+    # Generate a fixed roster of 50 warehouse employees
+    employees = [fake.name() for _ in range(50)]
     
     orders = []
     order_lines = []
+    shipments = []
+    labor_metrics = []
+    
     order_line_id = 1
+    shipment_id = 1
+    metric_id = 1
     
     for i in range(1, num_orders + 1):
         order_number = f"ORD-{100000 + i}"
         w_id = random.randint(1, 3)
         o_status = random.choice(order_statuses)
+        
+        # Chronological logical flow
         days_ago = random.randint(0, 60)
-        order_date = datetime.now() - timedelta(days=days_ago)
+        order_date = datetime.now() - timedelta(days=days_ago, hours=random.randint(0, 23))
         promised_date = order_date + timedelta(days=random.choice([2, 3, 5]))
         
-        actual_date = (order_date + timedelta(days=random.randint(1, 5))).strftime('%Y-%m-%d %H:%M:%S') if o_status == 'Shipped' else None
+        actual_date = None
+        if o_status == 'Shipped':
+            # Simulating picking time to create highly accurate 'labor_metrics' log
+            picker = random.choice(employees)
+            start_pick = order_date + timedelta(hours=random.randint(1, 12))
+            
+            total_ordered_qty = 0
+            lines_to_create = random.randint(1, 5)
+            
+            for _ in range(lines_to_create):
+                item_id = random.randint(1, num_items)
+                ordered_qty = random.randint(1, 15)
+                total_ordered_qty += ordered_qty
+                
+                order_lines.append((order_line_id, i, item_id, ordered_qty, ordered_qty, 0, 'Shipped'))
+                order_line_id += 1
+                
+            end_pick = start_pick + timedelta(minutes=random.randint(5, 45) * lines_to_create)
+            
+            # Very low error rate unless it's a rush order
+            errors = 1 if (random.random() < 0.05) else 0 
+            
+            labor_metrics.append((metric_id, picker, "Picking", w_id, total_ordered_qty, start_pick.strftime('%Y-%m-%d %H:%M:%S'), end_pick.strftime('%Y-%m-%d %H:%M:%S'), errors))
+            metric_id += 1
+            
+            # Create Shipment
+            actual_date = (end_pick + timedelta(hours=random.randint(2, 24))).strftime('%Y-%m-%d %H:%M:%S')
+            delay_flag = 1 if datetime.strptime(actual_date, '%Y-%m-%d %H:%M:%S') > promised_date else 0
+            
+            carrier = random.choice(carriers)
+            tracking = fake.unique.bothify(text='1Z##################' if carrier == 'UPS' else '############')
+            shipments.append((shipment_id, tracking, i, carrier, promised_date.strftime('%Y-%m-%d %H:%M:%S'), actual_date, delay_flag))
+            shipment_id += 1
+
+        else:
+            # Not shipped yet, just generate lines
+            for _ in range(random.randint(1, 5)):
+                item_id = random.randint(1, num_items)
+                ordered_qty = random.randint(1, 15)
+                
+                if o_status == 'Backorder':
+                    shipped = random.randint(0, ordered_qty - 1)
+                    backorder = ordered_qty - shipped
+                    l_status = 'Backorder'
+                else:
+                    shipped, backorder = 0, 0
+                    l_status = 'Open' if o_status in ('Open', 'Delayed') else 'Allocated'
+                    
+                order_lines.append((order_line_id, i, item_id, ordered_qty, shipped, backorder, l_status))
+                order_line_id += 1
+
+        
         region = random.choice(regions)
         priority = random.choice(priorities)
-        
         orders.append((i, order_number, w_id, order_date.strftime('%Y-%m-%d %H:%M:%S'), 
                        promised_date.strftime('%Y-%m-%d %H:%M:%S'), actual_date, region, priority, o_status))
-        
-        for _ in range(random.randint(1, 5)):
-            item_id = random.randint(1, num_items)
-            ordered_qty = random.randint(1, 15)
-            
-            if o_status == 'Shipped':
-                shipped, backorder, l_status = ordered_qty, 0, 'Shipped'
-            elif o_status == 'Backorder':
-                shipped = random.randint(0, ordered_qty - 1)
-                backorder = ordered_qty - shipped
-                l_status = 'Backorder'
-            else:
-                shipped, backorder = 0, 0
-                l_status = 'Open' if o_status in ('Open', 'Delayed') else 'Allocated'
-                
-            order_lines.append((order_line_id, i, item_id, ordered_qty, shipped, backorder, l_status))
-            order_line_id += 1
+                       
             
     cur.executemany("INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", orders)
     cur.executemany("INSERT INTO order_lines VALUES (?, ?, ?, ?, ?, ?, ?)", order_lines)
+    cur.executemany("INSERT INTO shipments VALUES (?, ?, ?, ?, ?, ?, ?)", shipments)
+    cur.executemany("INSERT INTO labor_metrics VALUES (?, ?, ?, ?, ?, ?, ?, ?)", labor_metrics)
 
     print("Generating Exception Logs...")
     exception_types = ['Low Stock', 'Delayed Shipment', 'Scanner Issue', 'Inventory Discrepancy', 'Damaged Goods', 'Cycle Count Variance']
@@ -285,6 +355,7 @@ def setup_database(
     print(f"\n✅ Database successfully initialized at {DB_PATH}")
     print(f"   Generated: {len(warehouses)} warehouses, {len(locations)} locations, {num_items} items")
     print(f"   Generated: {len(inventory)} inventory records, {num_orders} orders ({len(order_lines)} lines)")
+    print(f"   Generated: {len(shipments)} active shipments and {len(labor_metrics)} labor metrics")
     print(f"   Generated: {num_exceptions} operational exceptions")
 
 if __name__ == "__main__":
