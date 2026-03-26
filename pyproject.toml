@@ -1,10 +1,26 @@
 [project]
 name = "warehouse-ai-assistant"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI Warehouse Operations Assistant using LangGraph and FastMCP"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    # Data generation
     "faker>=40.11.0",
+    # MCP Server (Unit 6 - Function Calling)
+    "mcp>=1.6.0",
+    "starlette>=0.45.2",
+    "uvicorn>=0.34.0",
+    # LangChain & LangGraph (Unit 7 - Agentic AI)
+    "langchain>=0.3.31",
+    "langchain-openai>=0.3.1",
+    "langchain-anthropic>=0.3.2",
+    "langgraph>=0.3.21",
+    "langchain-mcp-adapters>=0.1.0",
+    # RAG Components (Unit 4)
+    "langchain-community>=0.3.31",
+    # Web Interface
+    "streamlit>=1.39.0",
+    # Development tools
     "ruff>=0.15.7",
 ]
