@@ -49,7 +49,6 @@ class VectorStoreManager:
         # This will convert text chunks into 1536-dimensional vectors
         self.embeddings = OpenAIEmbeddings(
             model=embedding_model,
-            api_key=settings.openai_api_key
         )
         
         # Create empty vector store

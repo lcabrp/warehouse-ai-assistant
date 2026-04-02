@@ -26,7 +26,6 @@ Token Management (From Lab 7 lessons):
 """
 
 import asyncio
-from typing import List, Dict
 
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
@@ -168,20 +167,33 @@ class RAGAgent:
         
         # 3. Initialize LLM
         self.llm = ChatOpenAI(
-            model=settings.default_model,
+            model=settings.LLM_MODEL,
             temperature=0.1,  # Slightly creative for explanation but mostly factual
-            api_key=settings.openai_api_key
         )
-        print(f"✅ Using model: {settings.default_model}")
+        print(f"✅ Using model: {settings.LLM_MODEL}")
         
-        # 4. Create agent
-        # Note: We don't need messages_modifier here because:
-        # - Our search tool already truncates results
-        # - We're not calling external APIs that might return huge responses
-        # But it's good practice to include for defense-in-depth
+        # 4. Create agent with explicit source citation instructions
+        # IMPORTANT: Per capstone rubric requirements, RAG agent must cite sources
+        # Using system_prompt parameter (compatible with LangChain 0.3.x, as shown in Unit 4)
+        system_prompt = """You are a warehouse documentation assistant.
+
+CRITICAL REQUIREMENTS FOR ALL RESPONSES:
+1. Answer ONLY using the retrieved documentation provided in the search results
+2. ALWAYS cite sources explicitly in your response:
+   - Format: "According to [Document Name], [answer]..."
+   - Include section headers when relevant
+   - Example: "According to Equipment_Troubleshooting.md (RF Scanner Issues section), you should..."
+   
+3. When multiple sources are retrieved, reference the most relevant ones
+4. If the documentation doesn't contain the answer, state: "I don't find that information in the documentation."
+5. Do not use information from your training data - stick strictly to the provided documentation
+
+Your answers should be helpful, clear, and always source-attributed."""
+        
         self.agent_executor = create_agent(
             self.llm,
-            tools=[self.search_tool]
+            tools=[self.search_tool],
+            system_prompt=system_prompt
         )
         
         print("✅ RAG Agent initialized and ready!\n")
@@ -194,22 +206,34 @@ class RAGAgent:
             question: Natural language question about procedures
         
         Returns:
-            Agent's answer
+            Agent's answer (with source citations)
         
         Example:
             answer = await agent.query("How do I fix a broken scanner?")
+            # Returns: "According to Equipment_Troubleshooting.md..."
         """
         if not self.agent_executor:
             raise RuntimeError("Agent not initialized. Call initialize() first.")
         
-        # Invoke the agent with the user's question
-        result = await self.agent_executor.ainvoke(
-            {"messages": [{"role": "user", "content": question}]}
-        )
-        
-        # Extract the final answer
-        final_message = result["messages"][-1]
-        return final_message.content
+        try:
+            # Invoke the agent with the user's question
+            result = await self.agent_executor.ainvoke(
+                {"messages": [{"role": "user", "content": question}]}
+            )
+            
+            # Extract the final answer
+            final_message = result["messages"][-1]
+            return final_message.content
+            
+        except Exception as e:
+            # Log error but provide graceful user-facing message
+            import sys
+            print(f"❌ RAG Agent Error: {e}", file=sys.stderr)
+            return (
+                f"I encountered an error searching the documentation. "
+                f"Please try rephrasing your question or contact support if the issue persists. "
+                f"Error: {str(e)[:100]}"
+            )
     
     async def chat(self, messages: list) -> str:
         """

@@ -31,17 +31,13 @@ Key Features from Unit 7:
 """
 
 import asyncio
-import os
-from pathlib import Path
-from typing import TypedDict, Annotated, Literal
+from typing import TypedDict, Annotated
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage, trim_messages
+from langchain_core.messages import SystemMessage, trim_messages
 from langchain.agents import create_agent
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
-from langgraph.types import Command
 
 from ..config import settings
 
@@ -124,11 +120,10 @@ class SQLAgent:
         
         # 3. Initialize LLM
         self.llm = ChatOpenAI(
-            model=settings.default_model,
+            model=settings.LLM_MODEL,
             temperature=0,  # Deterministic for data queries
-            api_key=settings.openai_api_key
         )
-        print(f"✅ Using model: {settings.default_model}")
+        print(f"✅ Using model: {settings.LLM_MODEL}")
         
         # 4. Create the agent using LangChain's create_agent helper
         # This creates a ReAct-style agent that can use our tools
@@ -153,15 +148,26 @@ class SQLAgent:
         if not self.agent_executor:
             raise RuntimeError("Agent not initialized. Call initialize() first.")
         
-        # Invoke the agent with the user's question
-        # Following Unit 6 pattern: pass messages dict
-        result = await self.agent_executor.ainvoke(
-            {"messages": [{"role": "user", "content": question}]}
-        )
-        
-        # Extract the final answer (last message)
-        final_message = result["messages"][-1]
-        return final_message.content
+        try:
+            # Invoke the agent with the user's question
+            # Following Unit 6 pattern: pass messages dict
+            result = await self.agent_executor.ainvoke(
+                {"messages": [{"role": "user", "content": question}]}
+            )
+            
+            # Extract the final answer (last message)
+            final_message = result["messages"][-1]
+            return final_message.content
+            
+        except Exception as e:
+            # Log error but provide graceful user-facing message
+            import sys
+            print(f"❌ SQL Agent Error: {e}", file=sys.stderr)
+            return (
+                f"I encountered an error querying the database. "
+                f"Please try rephrasing your question or try again later. "
+                f"Error: {str(e)[:100]}"
+            )
     
     async def chat(self, messages: list) -> str:
         """

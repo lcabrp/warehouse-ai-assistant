@@ -3,7 +3,7 @@ REM Windows Batch Script to Launch Warehouse AI Assistant CLI
 
 echo.
 echo ================================================================================
-echo 🏭 WAREHOUSE AI ASSISTANT - CLI INTERFACE
+echo WAREHOUSE AI ASSISTANT - CLI INTERFACE
 echo ================================================================================
 echo.
 echo Starting command-line interface...

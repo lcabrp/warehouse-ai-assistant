@@ -26,7 +26,7 @@ def print_banner():
     print("🏭 WAREHOUSE AI ASSISTANT")
     print("=" * 70)
     print("\nAn intelligent assistant for warehouse operations")
-    print("Powered by: SQL Agent + RAG Agent + Smart Router")
+    print("Powered by: SQL Agent + RAG Agent + Weather Agent + Smart Router")
     print("\nType 'help' for example questions or 'exit' to quit")
     print("=" * 70 + "\n")
 
@@ -39,10 +39,10 @@ def print_help():
     
     print("\n📊 DATA QUERIES (SQL Agent):")
     print("   • What orders are delayed?")
-    print("   • Show me critical inventory items")
-    print("   • How many open exceptions are there?")
+    print("   • Show me critical inventory items at Louisville")
+    print("   • How many open exceptions are there at our Dallas warehouse?")
     print("   • What is the status of order ORD-102459?")
-    print("   • Show me productivity metrics for the last 7 days")
+    print("   • Show me productivity metrics for Reno for the last 7 days")
     
     print("\n📚 PROCEDURES (RAG Agent):")
     print("   • How do I fix a broken RF scanner?")
@@ -51,10 +51,17 @@ def print_help():
     print("   • What are the replenishment rules?")
     print("   • How do I handle damaged goods?")
     
-    print("\n🔄 COMBINED QUERIES (Both Agents):")
+    print("\n🌐 WEATHER/NEWS (Weather Agent):")
+    print("   • What's the weather in Louisville today?")
+    print("   • Are there any transportation delays affecting Dallas?")
+    print("   • Check weather conditions in Reno")
+    print("   • Are there any FedEx service alerts this week?")
+    
+    print("\n🔄 COMBINED QUERIES (Multiple Agents):")
     print("   • Why is order ORD-102459 delayed and what's the escalation procedure?")
     print("   • Show me critical inventory and explain the replenishment policy")
-    print("   • What exceptions are open and how should I handle them?")
+    print("   • Are weather conditions affecting our shipments to Louisville?")
+    print("   • What exceptions are open at Dallas and how should I handle them?")
     
     print("\n" + "=" * 70 + "\n")
 

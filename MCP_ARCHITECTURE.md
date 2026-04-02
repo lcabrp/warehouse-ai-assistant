@@ -1,5 +1,18 @@
 # Understanding MCP in This Project
 
+> **📚 Technical Deep-Dive Documentation**  
+> This is a comprehensive technical reference for developers who want to understand the Model Context Protocol (MCP) implementation in depth. For a quick architecture overview, see [README.md](README.md).  
+> 
+> **Topics Covered:**  
+> - MCP protocol fundamentals  
+> - Client-server architecture patterns  
+> - Our 3-agent system (SQL, RAG, Weather)  
+> - Design decisions & trade-offs  
+> - Troubleshooting guide  
+> - Best practices & patterns
+
+---
+
 ## Overview
 
 This document explains how we use the Model Context Protocol (MCP) in this warehouse AI assistant project, and how it differs from the Unit 6 course approach.
@@ -149,9 +162,11 @@ self.agent_executor = create_agent(self.llm, tools=tools)
 
 ---
 
-## Our MCP Server Features
+## Our Three-Agent System
 
-### 6 Database Query Tools
+### 1. SQL Agent (Database Queries via MCP)
+
+**6 MCP Tools Available:**
 
 1. **`search_orders`** - Find orders by number, status, warehouse, date range
 2. **`get_order_details`** - Get complete order info with line items
@@ -160,9 +175,51 @@ self.agent_executor = create_agent(self.llm, tools=tools)
 5. **`get_exceptions`** - Find operational issues (scanner problems, damaged goods)
 6. **`get_labor_metrics`** - Employee productivity and picking efficiency
 
-### Key Design Patterns
+### 2. RAG Agent (Document Search - No MCP)
 
-#### 1. Lifespan Context Management
+**Uses InMemoryVectorStore directly:**
+- Loads 5 markdown files from `docs/` folder
+- 46 chunks embedded with `text-embedding-3-small`
+- No MCP needed - direct vector similarity search
+- Source: Warehouse operational procedures
+
+### 3. Weather Agent (Web Search via Tavily - No MCP)
+
+**Uses Tavily API directly:**
+- Web search tool for weather, news, transportation disruptions
+- Created via `@tool` decorator from LangChain
+- HTTP API calls to Tavily (not MCP)
+- Provides external context for shipment delays
+
+**Note:** While we could have implemented Tavily through MCP (as shown in Unit 7 Lab with the Tavily MCP server), we chose direct integration for simplicity. The patterns are equivalent:
+
+```python
+# MCP approach (Unit 7 Lab):
+research_client = MultiServerMCPClient({
+    "tavily": {
+        "transport": "http",
+        "url": f"https://mcp.tavily.com/mcp/?tavilyApiKey={key}",
+    }
+})
+tools = await research_client.get_tools()
+
+# Direct approach (our project):
+from tavily import TavilyClient
+tavily_client = TavilyClient(api_key=key)
+
+@tool
+def search_web(query: str) -> str:
+    results = tavily_client.search(query, search_depth="advanced")
+    return format_results(results)
+```
+
+Both approaches work; direct integration removes one layer of abstraction for a single-purpose tool.
+
+---
+
+## MCP Server Design Patterns
+
+### 1. Lifespan Context Management
 ```python
 @asynccontextmanager
 async def lifespan(server: FastMCP):
@@ -180,7 +237,7 @@ async def lifespan(server: FastMCP):
 - Available to all tools via `ctx` parameter
 - Properly closed on shutdown
 
-#### 2. Context Injection Pattern
+### 2. Context Injection Pattern
 ```python
 @mcp.tool()
 def search_orders(..., ctx: Context = None) -> dict:
@@ -198,7 +255,7 @@ def search_orders(..., ctx: Context = None) -> dict:
 - Each tool gets fresh database access
 - Testable (can mock context)
 
-#### 3. Parameterized Queries
+### 3. Parameterized Queries
 ```python
 query = "SELECT * FROM orders WHERE order_date >= ?"
 params = [cutoff_date]
@@ -212,7 +269,7 @@ results = db.execute_query(query, tuple(params))
 
 **Why:** Prevents SQL injection attacks
 
-#### 4. Structured Outputs
+### 4. Structured Outputs
 ```python
 return {
     "orders": results,
@@ -456,7 +513,7 @@ Then you can ask Copilot Chat: "What orders are delayed?" and it will use your M
    - ✅ Meets all "Excellent" criteria without added complexity
 
 2. **Performance**
-   - ✅ Loads 44 chunks in ~2 seconds
+   - ✅ Loads 46 chunks in ~2 seconds
    - ✅ No disk I/O overhead
    - ✅ Fast similarity search (in-memory operations)
 
@@ -467,7 +524,7 @@ Then you can ask Copilot Chat: "What orders are delayed?" and it will use your M
    - ✅ Matches Unit 4 course patterns
 
 4. **Cost**
-   - ✅ Re-embedding 44 chunks costs ~$0.0001 per startup
+   - ✅ Re-embedding 46 chunks costs ~$0.0001 per startup
    - ✅ Negligible cost for proof-of-concept
    - ✅ No cloud hosting fees
 
@@ -492,12 +549,13 @@ Then you can ask Copilot Chat: "What orders are delayed?" and it will use your M
 
 - **MCP Specification:** https://spec.modelcontextprotocol.io/
 - **FastMCP Documentation:** https://github.com/modelcontextprotocol/python-sdk
-- **Unit 6 Setup Guide:** `../CodeYouAIClass2026Unit6/MCP_SETUP_GUIDE.md`
+- **Unit 6 Course Materials:** `../CodeYouAIClass2026Unit6/`
 - **Our MCP Server:** `src/tools/warehouse_mcp.py`
 - **Our SQL Agent:** `src/agents/sql_agent.py`
 - **Our RAG Agent:** `src/agents/rag_agent.py`
+- **Our Weather Agent:** `src/agents/weather_agent.py`
 - **Vector Store:** `src/rag/vector_store.py`
 
 ---
 
-*Last Updated: March 26, 2026 - InMemoryVectorStore decision documented*
+*Last Updated: April 1, 2026 - Three-agent system with Tavily integration documented*

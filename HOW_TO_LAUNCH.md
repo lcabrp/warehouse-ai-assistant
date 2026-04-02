@@ -98,6 +98,10 @@ uv run python generate_data.py
 Check your `.env` file has:
 ```
 OPENAI_API_KEY=sk-...
+TAVILY_API_KEY=tvly-...  # Optional, for weather features
+```
+
+Get Tavily API key from: https://app.tavily.com/
 ```
 
 ---

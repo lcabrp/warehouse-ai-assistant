@@ -3,7 +3,7 @@ REM Windows Batch Script to Launch Warehouse AI Assistant Web Interface
 
 echo.
 echo ================================================================================
-echo 🏭 WAREHOUSE AI ASSISTANT - WEB INTERFACE
+echo WAREHOUSE AI ASSISTANT - WEB INTERFACE
 echo ================================================================================
 echo.
 echo Starting Streamlit web server...

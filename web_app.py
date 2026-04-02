@@ -59,6 +59,14 @@ st.markdown("""
         background-color: #4CAF50;
         color: white;
     }
+    .weather-agent {
+        background-color: #9C27B0;
+        color: white;
+    }
+    .combined-agents {
+        background-color: #FF9800;
+        color: white;
+    }
     .both-agents {
         background-color: #FF9800;
         color: white;
@@ -94,7 +102,8 @@ with st.sidebar:
     This AI assistant helps you with:
     - **📊 Data Queries** (orders, inventory, metrics)
     - **📚 Procedures** (troubleshooting, policies)
-    - **🔄 Combined Insights** (data + guidance)
+    - **🌐 Weather/News** (external conditions affecting operations)
+    - **🔄 Combined Insights** (data + procedures + weather)
     """)
     
     st.markdown("---")
@@ -104,10 +113,10 @@ with st.sidebar:
     with st.expander("📊 Data Queries (SQL Agent)"):
         st.markdown("""
         - What orders are delayed?
-        - Show me critical inventory items
-        - How many open exceptions are there?
+        - Show me critical inventory items at Louisville
+        - How many open exceptions are there at our Dallas warehouse?
         - What is the status of order ORD-102459?
-        - Show me productivity metrics for the last 7 days
+        - Show me productivity metrics for Reno for the last 7 days
         """)
     
     with st.expander("📚 Procedures (RAG Agent)"):
@@ -119,11 +128,20 @@ with st.sidebar:
         - How do I handle damaged goods?
         """)
     
-    with st.expander("🔄 Combined (Both Agents)"):
+    with st.expander("🌐 Weather/News (Weather Agent)"):
+        st.markdown("""
+        - What's the weather in Louisville today?
+        - Are there any transportation delays affecting Dallas?
+        - Check weather conditions in Reno
+        - Are there any FedEx service alerts this week?
+        """)
+    
+    with st.expander("🔄 Combined (Multiple Agents)"):
         st.markdown("""
         - Why is order ORD-102459 delayed and what's the escalation procedure?
         - Show me critical inventory and explain the replenishment policy
-        - What exceptions are open and how should I handle them?
+        - Are weather conditions affecting our shipments to Louisville?
+        - What exceptions are open at Dallas and how should I handle them?
         """)
     
     st.markdown("---")
@@ -160,8 +178,10 @@ for message in st.session_state.messages:
                 st.markdown('<span class="agent-badge sql-agent">📊 SQL Agent</span>', unsafe_allow_html=True)
             elif agent_type == "RAG":
                 st.markdown('<span class="agent-badge rag-agent">📚 RAG Agent</span>', unsafe_allow_html=True)
-            elif agent_type == "BOTH":
-                st.markdown('<span class="agent-badge both-agents">🔄 Both Agents</span>', unsafe_allow_html=True)
+            elif agent_type == "WEATHER":
+                st.markdown('<span class="agent-badge weather-agent">🌐 Weather Agent</span>', unsafe_allow_html=True)
+            elif agent_type in ["SQL_WEATHER", "ALL", "BOTH"]:
+                st.markdown('<span class="agent-badge combined-agents">🔄 Combined Agents</span>', unsafe_allow_html=True)
         
         st.markdown(message["content"])
 
@@ -185,8 +205,10 @@ if prompt := st.chat_input("Ask a question about warehouse operations..."):
                     st.markdown('<span class="agent-badge sql-agent">📊 SQL Agent</span>', unsafe_allow_html=True)
                 elif agent_name == "RAG":
                     st.markdown('<span class="agent-badge rag-agent">📚 RAG Agent</span>', unsafe_allow_html=True)
-                elif agent_name == "BOTH":
-                    st.markdown('<span class="agent-badge both-agents">🔄 Both Agents</span>', unsafe_allow_html=True)
+                elif agent_name == "WEATHER":
+                    st.markdown('<span class="agent-badge weather-agent">🌐 Weather Agent</span>', unsafe_allow_html=True)
+                elif agent_name in ["SQL_WEATHER", "ALL", "BOTH"]:
+                    st.markdown('<span class="agent-badge combined-agents">🔄 Combined Agents</span>', unsafe_allow_html=True)
                 
                 # Get response
                 response = asyncio.run(st.session_state.router.route_question(prompt))
@@ -213,7 +235,7 @@ if prompt := st.chat_input("Ask a question about warehouse operations..."):
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; font-size: 0.875rem;'>
-    <p>Powered by: OpenAI GPT-4o-mini • LangGraph • FastMCP • SQLite</p>
-    <p>Multi-Agent System: SQL Agent + RAG Agent + Intelligent Router</p>
+    <p>Powered by: OpenAI GPT-4o-mini • LangGraph • FastMCP • Tavily • SQLite</p>
+    <p>Multi-Agent System: SQL Agent + RAG Agent + Weather Agent + Intelligent Router</p>
 </div>
 """, unsafe_allow_html=True)

@@ -30,10 +30,12 @@ DOCS_PATH = PROJECT_ROOT / "docs"
 # Load .env file at runtime using python-dotenv
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")  # For web search and weather
 
 # Model selection (matching your Unit 6 course configuration)
 # gpt-4o-mini is fast and cost-effective for development
-DEFAULT_MODEL = "gpt-4o-mini"
+LLM_MODEL = "gpt-4o-mini"
+EMBEDDING_MODEL = "text-embedding-3-small"
 
 # MCP Server Configuration
 MCP_SERVER_HOST = "localhost"
@@ -58,7 +60,9 @@ class Settings:
         self.docs_path = DOCS_PATH
         self.openai_api_key = OPENAI_API_KEY
         self.anthropic_api_key = ANTHROPIC_API_KEY
-        self.default_model = DEFAULT_MODEL
+        self.tavily_api_key = TAVILY_API_KEY
+        self.LLM_MODEL = LLM_MODEL
+        self.EMBEDDING_MODEL = EMBEDDING_MODEL
         self.mcp_host = MCP_SERVER_HOST
         self.mcp_port = MCP_SERVER_PORT
         self.chunk_size = CHUNK_SIZE

@@ -19,6 +19,8 @@ dependencies = [
     "langchain-mcp-adapters>=0.1.0",
     # RAG Components (Unit 4)
     "langchain-community>=0.3.31",
+    # Web Search (Unit 7 - Tavily for weather/web information)
+    "tavily-python>=0.7.2",
     # Web Interface
     "streamlit>=1.39.0",
     # Development tools

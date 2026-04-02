@@ -15,7 +15,6 @@ Without chunking → 8,191 token embedding limit error
 With chunking → Each chunk fits within model limits
 """
 
-import os
 from pathlib import Path
 from typing import List
 from datetime import datetime
