@@ -142,9 +142,9 @@ Estimated **$650K/year ROI** for a 50-person warehouse."
 
 - **Code:** 1,500+ lines Python, 8 modules
 - **Data:** 3.18 MB database, 10,000 orders, ~23,000 total records
-- **AI:** 3 agents, 6 MCP tools, 46 document chunks
+- **AI:** 4 agents (SQL, RAG, Weather, Router), 6 MCP tools, 46 document chunks
 - **Docs:** 10+ markdown files, ~50 pages documentation
-- **Time:** SQL queries ~2-3 sec, RAG ~2-4 sec, Combined ~5-7 sec
+- **Time:** SQL queries ~2-3 sec, RAG ~2-4 sec, Weather ~2-3 sec, Combined ~5-7 sec
 
 ---
 

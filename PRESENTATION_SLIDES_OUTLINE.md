@@ -76,11 +76,11 @@ User Question
       ↓
 [Router/Classifier]
       ↓
-   ┌──┴──┐──────┐
-   ↓     ↓      ↓
-  SQL   RAG   BOTH
-   ↓     ↓      ↓
-Database Docs Combined
+   ┌──┴──┐──────┐──────┐
+   ↓     ↓      ↓      ↓
+  SQL   RAG  Weather Combined
+   ↓     ↓      ↓      ↓
+Database Docs  Web  Synthesis
 ```
 
 **Key Points:**
@@ -240,18 +240,23 @@ User: *"How do I fix a broken scanner?"*
 **Title:** Intelligent Orchestration
 
 ### Classification
-LLM determines: **SQL | RAG | BOTH**
+LLM determines: **SQL | RAG | WEATHER | SQL_WEATHER | ALL**
 
-### Synthesis (when BOTH)
-1. Execute SQL Agent → Get data
-2. Execute RAG Agent → Get procedures
-3. Synthesis LLM → Combine into coherent answer
+### Synthesis (when Combined)
+1. Execute appropriate agent(s) → Get data/procedures/weather
+2. Synthesis LLM → Combine into coherent answer
 
 **Example:**  
 *"Show critical inventory and explain replenishment policy"*
 - SQL: Gets inventory data
 - RAG: Gets policy document
 - Synthesizer: Creates combined answer
+
+**Example with Weather:**  
+*"Are Dallas shipments delayed due to weather?"*
+- SQL: Gets shipment data for Dallas
+- Weather: Gets current Dallas weather conditions
+- Synthesizer: Correlates delays with weather
 
 **Visual:** Flow diagram showing synthesis
 
@@ -294,11 +299,15 @@ LLM determines: **SQL | RAG | BOTH**
    *"How to troubleshoot RF scanner?"*  
    → Green badge (RAG Agent)
 
-3. **Combined Query:**  
-   *"Critical inventory + replenishment policy"*  
-   → Orange badge (Both Agents)
+3. **Weather Query:**  
+   *"What's the weather in Louisville?"*  
+   → Purple badge (Weather Agent)
 
-4. **Context:**  
+4. **Combined Query:**  
+   *"Critical inventory + replenishment policy"*  
+   → Orange badge (Combined Agents)
+
+5. **Context:**  
    *"What about shoes specifically?"*  
    → Maintains conversation history
 
@@ -413,7 +422,7 @@ $2,500 × 260 work days = $650,000/year
 - 📦 **10,000 orders** (realistic patterns)
 
 ### AI Components
-- 🤖 **3 agents** (Router, SQL, RAG)
+- 🤖 **4 agents** (SQL, RAG, Weather + Router)
 - 🔧 **6 MCP tools** (database operations)
 - 📚 **46 document chunks** (semantic search)
 
@@ -580,7 +589,7 @@ src/
 **Title:** Validation & Quality Assurance
 
 ### Manual Testing
-✅ **Agent Routing** - Verified SQL/RAG/BOTH classification  
+✅ **Agent Routing** - Verified SQL/RAG/WEATHER/Combined classification  
 ✅ **Tool Calling** - All 6 MCP tools tested  
 ✅ **Document Retrieval** - Top-3 chunks verified  
 ✅ **Synthesis** - Combined answers checked  

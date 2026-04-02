@@ -479,9 +479,10 @@ Open browser to: http://localhost:8501
 **Features:**
 - ✨ Interactive chat interface with history
 - 🎨 Color-coded agent badges:
-  - 🔵 **Blue** = SQL Agent
-  - 🟢 **Green** = RAG Agent
-  - 🟠 **Orange** = Both Agents
+  - 🔵 **Blue** = SQL Agent (Database Queries)
+  - 🟢 **Green** = RAG Agent (Procedures/Docs)
+  - 🟣 **Purple** = Weather Agent (External Info)
+  - 🟠 **Orange** = Combined Agents (Multi-source Synthesis)
 - 📋 Example questions in sidebar
 - 🧹 Clear conversation button
 - 💬 Maintains full conversation context
@@ -1403,14 +1404,21 @@ start_web.bat
    Point out: Document name and section referenced
    ```
 
-3. **Complex Both Query**
+3. **Weather Query**
+   ```
+   Type: "What's the weather in Louisville today?"
+   Show: Purple badge (Weather Agent), real-time external information
+   Point out: Uses Tavily to search web for current conditions
+   ```
+
+4. **Complex Combined Query**
    ```
    Type: "Show me critical inventory items and explain the replenishment policy"
-   Show: Orange badge (Both), combined data + procedure
+   Show: Orange badge (Combined), data + procedure synthesis
    Point out: Synthesis of SQL results + RAG document
    ```
 
-4. **Conversation Context**
+5. **Conversation Context**
    ```
    Type: "What about for shoes specifically?"
    Show: Maintains context from previous question

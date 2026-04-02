@@ -97,7 +97,7 @@ I've created a comprehensive presentation package with 4 documents to help you s
 - ✅ Conversation flow (sequence diagram)
 - ✅ Project structure tree
 - ✅ Course integration mind map
-- ✅ Data flow diagrams (SQL, RAG, Both)
+- ✅ Data flow diagrams (SQL, RAG, Weather, Combined)
 - ✅ Technology stack layers
 - ✅ ROI calculation flow
 - ✅ Production deployment timeline
@@ -210,13 +210,19 @@ How do I troubleshoot a broken RF scanner?
 ```
 **Expected:** Green badge, procedure with source citation
 
-### Question 3: Both Agents (Complex)
+### Question 3: Weather Agent (Simple)
+```
+What's the weather in Louisville today?
+```
+**Expected:** Purple badge, real-time weather information
+
+### Question 4: Combined Agents (Complex)
 ```
 Show me critical inventory items and explain the replenishment policy
 ```
 **Expected:** Orange badge, combined data + documentation
 
-### Question 4: Context (Follow-up)
+### Question 5: Context (Follow-up)
 ```
 What about shoes specifically?
 ```
@@ -250,7 +256,8 @@ What about shoes specifically?
 **Color Scheme Suggestions:**
 - SQL Agent references: Blue (#2196F3)
 - RAG Agent references: Green (#4CAF50)
-- Both/Synthesis: Orange (#FF9800)
+- Weather Agent references: Purple (#9C27B0)
+- Combined/Synthesis: Orange (#FF9800)
 - Background: White or light gray
 - Code blocks: Dark theme (VS Code style)
 

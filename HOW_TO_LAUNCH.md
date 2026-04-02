@@ -20,7 +20,7 @@ Open your browser to: **http://localhost:8501**
 
 ### Features:
 - ✨ Interactive chat with full conversation history
-- 🎨 Color-coded agent badges (SQL=Blue, RAG=Green, BOTH=Orange)
+- 🎨 Color-coded agent badges (SQL=Blue, RAG=Green, Weather=Purple, Combined=Orange)
 - 📋 Built-in example questions in sidebar
 - 🧹 Clear conversation button
 - 📱 Professional responsive design
@@ -114,6 +114,8 @@ Get Tavily API key from: https://app.tavily.com/
 3. Ask: "What orders are delayed?"
 4. See the **blue SQL badge** appear
 5. Get structured data results
+6. Try: "What's the weather in Louisville?"
+7. See the **purple Weather badge** appear
 
 ### Test the CLI:
 1. Run: `uv run python main.py`
@@ -130,9 +132,10 @@ Get Tavily API key from: https://app.tavily.com/
 
 1. **Start with Web Interface** (more impressive)
    - Show the clean UI
-   - Demonstrate SQL query (data badge)
-   - Demonstrate RAG query (procedure badge)
-   - Demonstrate BOTH query (synthesis badge)
+   - Demonstrate SQL query (blue data badge)
+   - Demonstrate RAG query (green procedure badge)
+   - Demonstrate Weather query (purple weather badge)
+   - Demonstrate Combined query (orange synthesis badge)
 
 2. **Then show CLI** (optional, shows versatility)
    - Quick demonstration
