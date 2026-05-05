@@ -40,6 +40,11 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.graph.message import add_messages
 
 from ..config import settings
+from ..tools.warehouse_mcp import (
+    DatabaseConnectionError,
+    DatabaseQueryError,
+    DatabaseQueryTimeoutError,
+)
 
 
 # ==============================================================================
@@ -134,13 +139,16 @@ class SQLAgent:
     
     async def query(self, question: str) -> str:
         """
-        Main entry point: Ask the agent a question.
+        Main entry point: Ask the agent a question with granular error handling.
+        
+        This method provides specific error messages to users based on the underlying
+        database error, helping them understand what went wrong and how to respond.
         
         Args:
             question: Natural language question about warehouse operations
         
         Returns:
-            Agent's answer as a string
+            Agent's answer as a string, or a specific error message if something fails
         
         Example:
             answer = await agent.query("What orders are delayed?")
@@ -158,33 +166,102 @@ class SQLAgent:
             # Extract the final answer (last message)
             final_message = result["messages"][-1]
             return final_message.content
-            
-        except Exception as e:
-            # Log error but provide graceful user-facing message
+        
+        except DatabaseConnectionError as e:
+            # Database is offline, corrupted, or inaccessible
             import sys
-            print(f"❌ SQL Agent Error: {e}", file=sys.stderr)
+            print(f"❌ SQL Agent - Connection Error: {e}", file=sys.stderr)
             return (
-                f"I encountered an error querying the database. "
-                f"Please try rephrasing your question or try again later. "
-                f"Error: {str(e)[:100]}"
+                "I'm unable to connect to the warehouse database right now. "
+                "The database server may be offline or there may be a file access issue. "
+                "Please try again in a few moments."
+            )
+        
+        except DatabaseQueryTimeoutError as e:
+            # Query is taking too long - likely a performance issue
+            import sys
+            print(f"❌ SQL Agent - Timeout Error: {e}", file=sys.stderr)
+            return (
+                "The database query took too long to complete. "
+                "This might mean the database is busy or your question requires a complex search. "
+                "Please try a simpler or more specific question."
+            )
+        
+        except DatabaseQueryError as e:
+            # Query failed - likely syntax or schema issue
+            import sys
+            print(f"❌ SQL Agent - Query Error: {e}", file=sys.stderr)
+            if e.sql_error:
+                print(f"    Original error: {e.sql_error}", file=sys.stderr)
+            return (
+                "The database query failed due to a problem with how your question "
+                "was converted to a database search. "
+                "Please try rephrasing your question in a different way."
+            )
+        
+        except Exception as e:
+            # Unexpected error - generic fallback
+            import sys
+            print(f"❌ SQL Agent - Unexpected Error: {type(e).__name__}: {e}", file=sys.stderr)
+            return (
+                "An unexpected error occurred while querying the database. "
+                "Please try rephrasing your question or try again later."
             )
     
     async def chat(self, messages: list) -> str:
         """
-        Multi-turn conversation interface.
+        Multi-turn conversation interface with granular error handling.
         
         Args:
             messages: List of messages (can be from previous conversation)
         
         Returns:
-            Agent's response
+            Agent's response or specific error message if query fails
         """
         if not self.agent_executor:
             raise RuntimeError("Agent not initialized. Call initialize() first.")
         
-        result = await self.agent_executor.ainvoke({"messages": messages})
-        final_message = result["messages"][-1]
-        return final_message.content
+        try:
+            result = await self.agent_executor.ainvoke({"messages": messages})
+            final_message = result["messages"][-1]
+            return final_message.content
+        
+        except DatabaseConnectionError as e:
+            import sys
+            print(f"❌ SQL Agent - Connection Error: {e}", file=sys.stderr)
+            return (
+                "I'm unable to connect to the warehouse database right now. "
+                "The database server may be offline or there may be a file access issue. "
+                "Please try again in a few moments."
+            )
+        
+        except DatabaseQueryTimeoutError as e:
+            import sys
+            print(f"❌ SQL Agent - Timeout Error: {e}", file=sys.stderr)
+            return (
+                "The database query took too long to complete. "
+                "This might mean the database is busy or your question requires a complex search. "
+                "Please try a simpler or more specific question."
+            )
+        
+        except DatabaseQueryError as e:
+            import sys
+            print(f"❌ SQL Agent - Query Error: {e}", file=sys.stderr)
+            if e.sql_error:
+                print(f"    Original error: {e.sql_error}", file=sys.stderr)
+            return (
+                "The database query failed due to a problem with how your question "
+                "was converted to a database search. "
+                "Please try rephrasing your question in a different way."
+            )
+        
+        except Exception as e:
+            import sys
+            print(f"❌ SQL Agent - Unexpected Error: {type(e).__name__}: {e}", file=sys.stderr)
+            return (
+                "An unexpected error occurred while querying the database. "
+                "Please try rephrasing your question or try again later."
+            )
     
     async def cleanup(self):
         """Clean up MCP client connection."""

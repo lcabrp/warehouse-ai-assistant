@@ -288,6 +288,385 @@ return {
 
 ---
 
+## SQL Agent Error Handling (Production-Quality)
+
+### Problem: Generic Error Messages
+
+**Before:** All database errors returned a single generic message:
+```
+"I encountered an error querying the database. Please try rephrasing your question."
+```
+
+**Issue:** Users couldn't understand what actually went wrong:
+- Is the database offline? (Connection problem)
+- Is my question phrased poorly? (Query syntax)
+- Is the system overloaded? (Performance problem)
+
+### Solution: Granular Error Classification
+
+We implemented a three-tier exception hierarchy to distinguish between fundamental failure modes:
+
+#### Exception Hierarchy
+
+```python
+# Base exception - catch all warehouse database errors
+class WarehouseDatabaseError(Exception):
+    pass
+
+# Subclass 1: Connection/Access Issues
+class DatabaseConnectionError(WarehouseDatabaseError):
+    """Database is offline, corrupted, or inaccessible"""
+    # User message: "I'm unable to connect to the warehouse database right now..."
+
+# Subclass 2: Query/Syntax Issues  
+class DatabaseQueryError(WarehouseDatabaseError):
+    """SQL syntax, schema, or logic error"""
+    def __init__(self, message: str, sql_error: str = None, query: str = None):
+        super().__init__(message)
+        self.sql_error = sql_error  # Original SQLite error (for logs)
+        self.query = query          # Failed query (for debugging)
+    # User message: "The database query failed due to a problem..."
+
+# Subclass 3: Performance Issues
+class DatabaseQueryTimeoutError(WarehouseDatabaseError):
+    """Query is taking too long - database locked or overloaded"""
+    # User message: "The database query took too long to complete..."
+```
+
+#### Error Detection in WarehouseDB
+
+**Connection Detection:**
+```python
+def connect(self):
+    try:
+        self.conn = sqlite3.connect(self.db_path)
+        self.conn.row_factory = sqlite3.Row
+        return self
+    except sqlite3.DatabaseError as e:
+        # Database corruption or format issues
+        raise DatabaseConnectionError(...) from e
+    except (OSError, IOError) as e:
+        # File system issues: missing file, permissions
+        raise DatabaseConnectionError(...) from e
+```
+
+**Query Execution Detection:**
+```python
+def execute_query(self, query: str, params: tuple = ()):
+    try:
+        cursor = self.conn.cursor()
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+        
+    except sqlite3.OperationalError as e:
+        # Most common: syntax, "no such table/column", locks
+        error_msg = str(e).lower()
+        if "no such table" in error_msg or "no such column" in error_msg:
+            raise DatabaseQueryError(
+                "The database schema doesn't match the query...",
+                sql_error=str(e),
+                query=query
+            ) from e
+        elif "locked" in error_msg or "timeout" in error_msg:
+            raise DatabaseQueryTimeoutError(
+                "The database is currently locked or busy..."
+            ) from e
+        else:
+            raise DatabaseQueryError(...) from e
+            
+    except sqlite3.ProgrammingError as e:
+        # Syntax error or parameter binding issue
+        raise DatabaseQueryError(
+            "The SQL query has a syntax error or parameter binding issue.",
+            sql_error=str(e),
+            query=query
+        ) from e
+```
+
+#### User-Facing Error Messages in SQLAgent
+
+```python
+async def query(self, question: str) -> str:
+    try:
+        # Execute agent...
+        result = await self.agent_executor.ainvoke({"messages": [...]})
+        return result["messages"][-1].content
+        
+    except DatabaseConnectionError as e:
+        # Database is offline or inaccessible
+        return (
+            "I'm unable to connect to the warehouse database right now. "
+            "The database server may be offline or there may be a file access issue. "
+            "Please try again in a few moments."
+        )
+    except DatabaseQueryTimeoutError as e:
+        # Query is taking too long
+        return (
+            "The database query took too long to complete. "
+            "This might mean the database is busy or your question requires a complex search. "
+            "Please try a simpler or more specific question."
+        )
+    except DatabaseQueryError as e:
+        # Query failed due to syntax/schema
+        return (
+            "The database query failed due to a problem with how your question "
+            "was converted to a database search. "
+            "Please try rephrasing your question in a different way."
+        )
+```
+
+#### Benefits
+
+✅ **Users understand what went wrong**
+- Actionable guidance for each failure type
+- Not just "an error occurred"
+
+✅ **Developers can debug more easily**
+- Original SQL errors logged to stderr
+- Query text preserved for analysis
+- Clear exception hierarchy
+
+✅ **Future-proof**
+- Easy to add more specific error types
+- Can implement retry logic per error type
+- Supports monitoring and alerting
+
+**File Location:** `src/tools/warehouse_mcp.py` (lines 30-185)
+
+---
+
+## RAG Response Citation Validation
+
+### Problem: Fragile Citation Enforcement
+
+**Requirement:** RAG agent must cite document sources (capstone rubric requirement)
+
+**Before:** Enforced via system prompt only:
+```python
+system_prompt = """ALWAYS cite sources explicitly in your response:
+   - Format: "According to [Document Name], [answer]..."
+   - Include section headers when relevant
+"""
+```
+
+**Issue:** Relies on LLM following instructions - not guaranteed:
+- LLM might forget citation in some responses
+- No structural validation
+- No way to verify compliance in tests
+- "According to..." sometimes doesn't appear exactly as specified
+
+### Solution: Structural Citation Validation Framework
+
+We built a three-layer validation system:
+
+#### Layer 1: Citation Extraction
+
+```python
+class CitationExtractor:
+    """Extract citations from text using regex patterns."""
+    
+    CITATION_PATTERNS = [
+        r"According to\s+([^\s,\(]+(?:\.md)?)\s*,",
+        r"According to\s+([^\s,\(]+(?:\.md)?)\s*\(\s*([^\)]+)\s*\)\s*,",
+        r"As stated in\s+([^\s,\(]+(?:\.md)?)\s*,",
+    ]
+    
+    @staticmethod
+    def extract_citations(response: str) -> List[Citation]:
+        """Extract all citations, with source and optional section."""
+        citations = []
+        for pattern in CitationExtractor.CITATION_PATTERNS:
+            for match in re.finditer(pattern, response, re.IGNORECASE):
+                source = match.group(1)
+                section = match.group(2) if len(match.groups()) > 1 else None
+                citations.append(Citation(source, section, match.start()))
+        return citations
+```
+
+#### Layer 2: Citation Validation
+
+```python
+class CitationValidator:
+    """Validate that citations are proper and complete."""
+    
+    @staticmethod
+    def validate_has_citations(response: str) -> Tuple[bool, str]:
+        """Check response includes citations (or is 'no results')."""
+        if "no relevant procedures found" in response.lower():
+            return True, "Valid: No results response"
+        
+        citations = CitationExtractor.extract_citations(response)
+        if not citations:
+            return False, "Response contains no citations"
+        return True, f"Valid: Found {len(citations)} citation(s)"
+    
+    @staticmethod
+    def validate_citation_format(response: str) -> Tuple[bool, List[str]]:
+        """Validate all citations follow expected format."""
+        issues = []
+        citations = CitationExtractor.extract_citations(response)
+        
+        for citation in citations:
+            if not citation.source or len(citation.source) < 3:
+                issues.append(f"Citation has invalid source: '{citation.source}'")
+        
+        return len(issues) == 0, issues
+    
+    @staticmethod
+    def validate_no_citation_claims_without_citation(response: str):
+        """Detect factual claims without attribution."""
+        # Find uncited procedural statements like "The procedure is..."
+        # or "You should..." without nearby citation
+        # Returns issues found
+```
+
+#### Layer 3: Runtime Validator
+
+```python
+class RAGResponseValidator:
+    """Validates responses before returning to users."""
+    
+    def validate_response(self, response: str) -> ValidationResult:
+        """Comprehensive validation of RAG response."""
+        issues = []
+        
+        # Check 1: Not empty
+        if not response or not response.strip():
+            return ValidationResult(is_valid=False, issues=["Empty response"])
+        
+        # Check 2: Is "no results" special case?
+        is_no_results = any(
+            pattern in response.lower()
+            for pattern in [
+                "no relevant procedures",
+                "i don't find that information",
+                "cannot find"
+            ]
+        )
+        
+        # Check 3: Validate citations
+        has_citations, msg = CitationValidator.validate_has_citations(response)
+        if not has_citations and not is_no_results:
+            issues.append(f"Missing citations - {msg}")
+        
+        # Check 4: Validate format
+        format_valid, format_issues = CitationValidator.validate_citation_format(response)
+        if not format_valid:
+            issues.extend(format_issues)
+        
+        # Check 5: Check for uncited claims
+        if citations:
+            claims_valid, claim_issues = CitationValidator.validate_no_citation_claims_without_citation(response)
+            if not claims_valid:
+                issues.extend(claim_issues)
+        
+        return ValidationResult(
+            is_valid=len(issues) == 0,
+            issues=issues,
+            citations_found=len(citations),
+            warning_level="none" if not issues else "warning"
+        )
+```
+
+#### Using the Validator
+
+**Option 1: Manual Validation in Tests**
+```python
+from src.rag.citation_validator import RAGResponseValidator
+
+validator = RAGResponseValidator()
+response = await rag_agent.query("How do I cycle count?")
+validation = validator.validate_response(response)
+
+assert validation.is_valid, f"Citation issues: {validation.issues}"
+print(f"Citations found: {validation.citations_found}")
+```
+
+**Option 2: Wrap RAG Agent for Automatic Validation**
+```python
+from src.rag.citation_validator import ValidatedRAGAgent
+
+rag_agent = await create_rag_agent()
+validated_agent = ValidatedRAGAgent(rag_agent, strict_mode=True)
+
+# Will raise CitationError if response missing citations
+response = await validated_agent.query("How do I cycle count?")
+```
+
+**Option 3: Check Citations in Responses**
+```python
+validator = RAGResponseValidator()
+citations = validator.get_citations(response)
+sources = validator.get_citation_sources(response)
+print(f"Sources cited: {sources}")
+```
+
+#### Test Coverage
+
+**17 comprehensive tests** covering:
+
+```python
+# Citation Extraction (4 tests)
+- Basic citation extraction
+- Citations with section headers
+- Multiple citations in one response
+- Citation presence detection
+
+# Citation Format Validation (4 tests)
+- Proper "According to..." syntax
+- Multiple sources in one response
+- Presence validation
+- Special case: "no results" responses
+
+# Citation Completeness (2 tests)
+- Detecting uncited claims
+- Verifying all sources are cited
+
+# Edge Cases (4 tests)
+- Empty responses
+- Whitespace-only responses
+- Very short responses
+- Citation counting
+
+# Consistency (2 tests)
+- Same response returns same result
+- Extraction is idempotent
+
+# Integration (1 test)
+- Real RAG agent response scenarios
+```
+
+**Result:** 17/17 tests passing ✅
+
+#### Benefits
+
+✅ **Structural Guarantee**
+- Not just system prompt suggestion
+- Validated before responses sent to users
+- Can enforce strictly or warn
+
+✅ **Testing & Debugging**
+- 17 test cases ensure compliance
+- Easy to verify in automated tests
+- Can identify problematic patterns
+
+✅ **Production-Ready**
+- Wrapper agent for strict validation
+- Optional integration (backward compatible)
+- Can add to CI/CD pipeline
+
+✅ **Rubric Compliance**
+- Provably meets capstone citation requirement
+- Test evidence of validation
+- Can demonstrate during presentation
+
+**File Locations:**
+- Citation extraction/validation: `tests/test_rag_citation_validation.py`
+- Runtime validator: `src/rag/citation_validator.py`
+
+---
+
 ## STDIO Transport Explained
 
 **STDIO = Standard Input/Output**
