@@ -12,6 +12,8 @@ The Warehouse AI Assistant is a capstone project demonstrating advanced AI techn
 - **Multi-Agent System**: Specialized agents for data queries, procedural knowledge, and external information
 - **MCP (Model Context Protocol)** Integration: FastMCP server exposing database tools
 - **RAG (Retrieval Augmented Generation)**: Document-based procedural guidance
+- **Robust SQL Error Handling**: Granular database connection, query, and timeout classification
+- **Citation Validation**: Structural source citation enforcement for RAG responses
 - **Web Search Integration**: Tavily-powered weather and news lookup for shipment context
 - **Intelligent Routing**: LLM-based classification directing questions to appropriate agents
 - **Information Synthesis**: Combining data, procedures, and external context for comprehensive answers
@@ -90,12 +92,14 @@ Decision:
    - Queries warehouse database via MCP tools
    - Handles: orders, inventory, shipments, exceptions, metrics
    - Uses: FastMCP client, gpt-4o-mini (temp=0)
+   - **Robust error handling**: Distinguishes connection, timeout, query syntax, and runtime database errors
 
 2. **RAG Agent** (`src/agents/rag_agent.py`)
    - Searches operational procedures and documentation
    - Handles: troubleshooting, policies, how-to guides
    - Uses: InMemoryVectorStore, text-embedding-3-small
    - **Always cites sources**: Includes document names and section headers in responses
+   - **Validation support**: Runtime citation validation available in `src/rag/citation_validator.py`
 
 3. **Weather Agent** (`src/agents/weather_agent.py`)
    - Searches web for real-time external information via Tavily

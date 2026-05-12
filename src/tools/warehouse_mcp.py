@@ -28,6 +28,77 @@ from ..config import settings
 
 
 # ==============================================================================
+# Custom Exception Hierarchy
+# ==============================================================================
+
+class WarehouseDatabaseError(Exception):
+    """
+    Base exception for all database errors.
+    
+    This allows callers to catch any warehouse database error with a single
+    except clause, while also allowing specific error handling for subclasses.
+    """
+    pass
+
+
+class DatabaseConnectionError(WarehouseDatabaseError):
+    """
+    Raised when unable to establish or maintain connection to the database.
+    
+    Common causes:
+    - Database file doesn't exist
+    - Database file is locked/corrupted
+    - File system is unavailable
+    - Insufficient permissions
+    
+    User message: "I'm unable to connect to the warehouse database. 
+    The database server may be offline. Please try again in a few moments."
+    """
+    pass
+
+
+class DatabaseQueryError(WarehouseDatabaseError):
+    """
+    Raised when a SQL query fails due to syntax, logic, or schema issues.
+    
+    Common causes:
+    - SQL syntax error
+    - Referenced column/table doesn't exist
+    - Data type mismatch
+    - Constraint violation (should not occur in read-only queries)
+    
+    User message: "The database query failed - this may be due to your 
+    question syntax. Can you rephrase your question?"
+    """
+    
+    def __init__(self, message: str, sql_error: str = None, query: str = None):
+        """
+        Args:
+            message: User-friendly error message
+            sql_error: Original SQLite error message (for logging)
+            query: The SQL query that failed (for logging/debugging)
+        """
+        super().__init__(message)
+        self.sql_error = sql_error
+        self.query = query
+
+
+class DatabaseQueryTimeoutError(WarehouseDatabaseError):
+    """
+    Raised when a query takes too long to execute.
+    
+    This could indicate:
+    - Unoptimized query against large dataset
+    - Database is under heavy load
+    - Missing indexes
+    
+    User message: "The database query took too long to complete. 
+    Please try a simpler question."
+    """
+    pass
+
+
+# ==============================================================================
 # Database Connection Management
 # ==============================================================================
 
@@ -39,6 +110,7 @@ class WarehouseDB:
     - Encapsulates connection logic
     - Easier to mock for testing
     - Could swap for SQLAlchemy later if needed
+    - Provides granular error handling for different failure modes
     """
     
     def __init__(self, db_path: str):
@@ -46,20 +118,51 @@ class WarehouseDB:
         self.conn = None
     
     def connect(self):
-        """Open database connection."""
-        self.conn = sqlite3.connect(self.db_path)
-        # Return rows as dictionaries for easier JSON serialization
-        self.conn.row_factory = sqlite3.Row
-        return self
+        """
+        Open database connection with error handling.
+        
+        Raises:
+            DatabaseConnectionError: If unable to connect to database
+        
+        Returns:
+            self: For method chaining
+        """
+        try:
+            self.conn = sqlite3.connect(self.db_path)
+            # Return rows as dictionaries for easier JSON serialization
+            self.conn.row_factory = sqlite3.Row
+            return self
+        except sqlite3.DatabaseError as e:
+            # SQLite database corruption or format issues
+            raise DatabaseConnectionError(
+                f"Database file is corrupted or inaccessible: {self.db_path}"
+            ) from e
+        except (OSError, IOError) as e:
+            # File system issues: missing file, permissions, etc.
+            raise DatabaseConnectionError(
+                f"Cannot access database file at {self.db_path}: {str(e)}"
+            ) from e
+        except Exception as e:
+            # Catch-all for unexpected connection failures
+            raise DatabaseConnectionError(
+                f"Unexpected error connecting to database: {str(e)}"
+            ) from e
     
     def close(self):
         """Close database connection."""
         if self.conn:
-            self.conn.close()
+            try:
+                self.conn.close()
+            except Exception:
+                # Suppress errors during cleanup to avoid masking original exceptions
+                pass
     
     def execute_query(self, query: str, params: tuple = ()) -> list[dict]:
         """
-        Execute a SELECT query and return results as list of dicts.
+        Execute a SELECT query with granular error handling.
+        
+        This method distinguishes between connection issues and query issues,
+        allowing calling code to provide appropriate error messages to users.
         
         Args:
             query: SQL SELECT statement
@@ -67,16 +170,72 @@ class WarehouseDB:
         
         Returns:
             List of dictionaries representing rows
+        
+        Raises:
+            DatabaseConnectionError: If connection is not established
+            DatabaseQueryError: If the query fails to execute
+            DatabaseQueryTimeoutError: If the query exceeds timeout
         """
+        # Connection state validation
         if not self.conn:
-            raise RuntimeError("Database not connected")
+            raise DatabaseConnectionError(
+                "Database connection is not established. Initialize the connection first."
+            )
         
-        cursor = self.conn.cursor()
-        cursor.execute(query, params)
+        try:
+            cursor = self.conn.cursor()
+            
+            # Execute with timeout (SQLite default is 5 seconds, adjustable)
+            # Note: SQLite's timeout is for database lock waits, not query execution time
+            cursor.execute(query, params)
+            
+            # Convert Row objects to dicts
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]
+            
+        except sqlite3.OperationalError as e:
+            # Most common query error: syntax, missing table/column, locked database
+            error_msg = str(e).lower()
+            
+            # Detect specific operational issues
+            if "no such table" in error_msg or "no such column" in error_msg:
+                raise DatabaseQueryError(
+                    "The database schema doesn't match the query - this is likely a configuration issue.",
+                    sql_error=str(e),
+                    query=query
+                ) from e
+            elif "locked" in error_msg or "timeout" in error_msg:
+                raise DatabaseQueryTimeoutError(
+                    "The database is currently locked or busy. Please try again."
+                ) from e
+            else:
+                raise DatabaseQueryError(
+                    "Database query execution failed.",
+                    sql_error=str(e),
+                    query=query
+                ) from e
         
-        # Convert Row objects to dicts
-        rows = cursor.fetchall()
-        return [dict(row) for row in rows]
+        except sqlite3.ProgrammingError as e:
+            # SQL syntax error or parameter binding issue
+            raise DatabaseQueryError(
+                "The SQL query has a syntax error or parameter binding issue.",
+                sql_error=str(e),
+                query=query
+            ) from e
+        
+        except sqlite3.DatabaseError as e:
+            # Other database errors: corruption, disk I/O, etc.
+            raise DatabaseConnectionError(
+                f"Database error during query execution: {str(e)}"
+            ) from e
+        
+        except Exception as e:
+            # Unexpected error - log for debugging
+            raise DatabaseQueryError(
+                "An unexpected error occurred while executing the query.",
+                sql_error=str(e),
+                query=query
+            ) from e
 
 
 # ==============================================================================
